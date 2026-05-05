@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         更好的抖音
 // @namespace    https://github.com/YU-1021/better-douyin
-// @version      1.0
+// @version      1.1
 // @description  去除抖音网页广告和登录弹窗，支持免登录搜索跳转，增强遮罩层清理
 // @author       Yu
 // @license      MIT
@@ -21,16 +21,13 @@
   const HIDE_SELECTORS = [
     '[data-e2e="feed-item"] [data-e2e="ad-link"]',
     '[data-e2e="feed-item"] [aria-label*="广告"]',
-    '[data-e2e="feed-item"] [aria-label*="直播"]',
-    '[class*="login"]',
-    '[class*="Login"]',
-    '[data-e2e*="login"]',
-    '[role="dialog"]',
-    '#login-panel-new',
-    '[data-bytereplay-mask]',
-    '.oMpq4HiN',
-    '.GzPW6isY',
-    '.BGmBK6_i'
+    '[data-e2e="feed-item"] [aria-label*="直播"]'
+  ];
+
+  const LOGIN_SELECTORS = [
+    '.douyin_login_iframe:has(iframe)',
+    'div[id^="login-full-panel-"]',
+    '[id^="related-video-card-login-guide"]'
   ];
 
   const BLOCKED_TEXTS = ['登录', '注册', '手机验证码登录', '扫码登录'];
@@ -87,33 +84,18 @@
     return typeof cls === 'string' && /login|Login|auth|Auth/.test(cls);
   }
 
+  function removeLoginDialogs(root = document) {
+    LOGIN_SELECTORS.forEach((selector) => {
+      root.querySelectorAll(selector).forEach((el) => el.remove());
+    });
+  }
+
   function cleanDom(root = document) {
     HIDE_SELECTORS.forEach((selector) => {
       root.querySelectorAll(selector).forEach((el) => el.remove());
     });
 
-    root.querySelectorAll('[role="dialog"], [class*="login"], [class*="Login"], [data-e2e*="login"]').forEach((el) => {
-      if (isLoginNode(el)) el.remove();
-    });
-
-    root.querySelectorAll('div[id^="login-full-panel"]').forEach((el) => el.remove());
-
-    root.querySelectorAll('div').forEach((el) => {
-      const style = window.getComputedStyle(el);
-      const isFixed = style.position === 'fixed';
-      const isFullScreen = style.top === '0px' && style.left === '0px' &&
-        (style.width === '100%' || style.width === '100vw') &&
-        (style.height === '100%' || style.height === '100vh');
-      const hasHighZIndex = parseInt(style.zIndex) >= 1000;
-      const hasDarkBg = style.backgroundColor && style.backgroundColor.includes('rgba');
-
-      if (isFixed && isFullScreen && hasHighZIndex && hasDarkBg) {
-        const hasLoginChild = el.querySelector('#login-panel-new, [data-bytereplay-mask], [class*="login"]');
-        if (hasLoginChild || el.children.length <= 2) {
-          el.remove();
-        }
-      }
-    });
+    removeLoginDialogs(root);
   }
 
   function handleClick(event) {
@@ -133,7 +115,10 @@
   function observe(root) {
     if (!root || observedRoots.has(root)) return;
     observedRoots.add(root);
-    const observer = new MutationObserver(() => cleanDom(root));
+    const observer = new MutationObserver(() => {
+      cleanDom(root);
+      bindSearchEvents();
+    });
     observer.observe(root, { childList: true, subtree: true });
   }
 
@@ -179,8 +164,13 @@
     window.addEventListener('popstate', () => cleanDom(document));
     window.addEventListener('hashchange', () => cleanDom(document));
     showNotification();
+    bindSearchEvents();
+  }
+
+  function bindSearchEvents() {
     const searchBtn = document.querySelector('button[data-e2e="searchbar-button"]');
-    if (searchBtn) {
+    if (searchBtn && !searchBtn.dataset.betterDouyinBound) {
+      searchBtn.dataset.betterDouyinBound = '1';
       searchBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -188,7 +178,8 @@
       }, true);
     }
     const searchInput = document.querySelector('input[data-e2e="searchbar-input"]');
-    if (searchInput) {
+    if (searchInput && !searchInput.dataset.betterDouyinBound) {
+      searchInput.dataset.betterDouyinBound = '1';
       searchInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
